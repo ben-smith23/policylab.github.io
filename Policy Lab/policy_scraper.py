@@ -1,6 +1,10 @@
 from urllib.request import urlopen as Ureq
 from bs4 import BeautifulSoup as soup
 
-policyurl = "https://github.com/ben-smith23/policylab/raw/main/Policy%20Lab/enacted2020.html"
+policyurl = "file:///C:/Users/Ben/OneDrive/Desktop/Policy%20Lab/Policy%20Lab%20Code/policylab/Policy%20Lab/index.html"
 
 enacted2020 = Ureq(policyurl)
+ppage = enacted2020.read()
+enacted2020.close()
+page_soup = soup(ppage, "html.parser")
+page_soup.b
