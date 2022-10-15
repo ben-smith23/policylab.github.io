@@ -8,3 +8,9 @@ ppage = enacted2020.read()
 enacted2020.close()
 page_soup = soup(ppage, "html.parser")
 bills = page_soup.findAll("div",{"class":"fullbill"})
+
+bill = bills[0]
+
+for bill in bills:
+    billsum = bill.findAll("b",{"class":"summary"})
+    summarytext = billsum[0].text
