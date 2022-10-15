@@ -11,20 +11,23 @@ bills = page_soup.findAll("div",{"class":"fullbill"})
 
 bill = bills[0]
 
-#filename ="bills2020.xls"
-#f = open(filename, "w")
+filename ="bills2020.csv"
+f = open(filename, "w")
 
 headers = "Summary"
-#f.write(headers)
+f.write(headers)
 
-"""
 for bill in bills:
     billsum = bill.findAll("b",{"class":"summary"})
-    oldsum = billsum[0].text
-    summarytext = oldsum.strip()
-    
-    print(summarytext)
+    summary = billsum[0].text.strip()
+    summary = summary.replace(',', '')
 
-    #f.write(summarytext)
-#f.close()
-"""
+    billtitle = bill.findAll("b",{"class":"title"})
+    title = billtitle[0].text.strip()
+    title = title.replace(',', '')
+    
+    print(title)
+    print(summary)
+
+    f.write(title + "," + summary + "\n")
+f.close()
