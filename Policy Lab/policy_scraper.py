@@ -1,6 +1,7 @@
 from urllib.request import urlopen as Ureq
 from bs4 import BeautifulSoup as soup
 from datetime import datetime
+import requests
 
 policyurl = "file:///C:/Users/Ben/OneDrive/Desktop/Policy%20Lab/Policy%20Lab%20Code/policylab/Policy%20Lab/index.html"
 
@@ -35,10 +36,13 @@ for bill in bills:
     la = la.replace('[<i class=> ', '')
     la = la.replace(' </i>]','')
 
+    link = bill.find("a",{"class":"num"}).get("href")
+
     print(title)
     print(billnum)
+    print(link)
     print(summary)
     print(la)
 
-    f.write(title + "," + billnum + "," + la + "," + summary + "\n")
+    f.write(title + "," + billnum + "," + link + "," + la + "," + summary + "\n")
 f.close()
