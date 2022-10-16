@@ -14,9 +14,6 @@ bill = bills[0]
 filename ="bills2020.csv"
 f = open(filename, "w")
 
-headers = "Summary"
-f.write(headers)
-
 for bill in bills:
     billsum = bill.findAll("b",{"class":"summary"})
     summary = billsum[0].text.strip()
