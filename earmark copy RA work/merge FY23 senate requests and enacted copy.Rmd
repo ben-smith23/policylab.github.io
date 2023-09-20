@@ -1,0 +1,136 @@
+---
+title: "Merge FY23 Senate requests and enacted earmarks"
+
+---
+
+Merge FY23 Senate enacted projects with Senate requests.
+
+```{r}
+library(tidyverse)
+library(stringr)
+setwd("/Users/bensmith/Desktop/earmark copy RA work")
+senate_enacted_23 <- read_csv("enacted FY23 FINAL FINAL.csv")
+senate_coded_23 <- read_csv("senate coded request 22-24 addresses.csv")
+
+#Select only senator earmarks that originated in the senate "S" or in both the senate and house "B".
+senate_enacted_23 <- subset(senate_enacted_23, grepl("S", chamber) & (grepl("S", origination) | grepl("B", origination)))
+
+senate_coded_23 <- subset(senate_coded_23, grepl("FY2023", FY))
+
+senate_enacted_23 <- senate_enacted_23 %>%
+  rename(amount = total, st = state)
+
+mapping_dict <- c("Agriculture, Rural Development, Food and Drug Administration, and Related Agencies" = "AG", 
+                  "Commerce, Justice, Science, and Related Agencies" = "CJS",
+                  "Energy and Water Development" = "EW",
+                  "Financial Services and General Government" = "FSGG",
+                  "Homeland Security" = "HS",
+                  "Interior, Environment, and Related Agencies" = "Interior",
+                  "Labor, Health and Human Services, Education, and Related Agencies" = "LHHS",
+                  "Military Construction, Veterans Affairs, and Related Agencies" = "MilCon VA",
+                  "Transportation, Housing and Urban Development, and Related Agencies" = "THUD")
+
+senate_coded_23 <- senate_coded_23 %>%
+  mutate(subcommittee = case_when(
+    subcommittee %in% names(mapping_dict) ~ mapping_dict[subcommittee],
+    TRUE ~ subcommittee
+  ))
+```
+
+Fix Senate Coded
+
+```{r}
+data <- senate_coded_23
+
+data$merged_column <- apply(data[, (ncol(data) - 4):ncol(data)], 1, function(row) {
+  paste(as.character(row), collapse = " ")})
+
+# Regular expression to match both formats
+regex <- "(\\d+\\.\\d+),?\\s?(\\d+\\.\\d+),?\\s?(-?\\d+\\.\\d+),?\\s?(-?\\d+\\.\\d+)"
+
+# Extract coordinates
+coords_list <- str_match(data$merged_column, regex)
+
+# Remove the first column of coords_list which contains the entire matched string
+coords_list <- coords_list[, -1]
+
+# Convert to a dataframe
+coords_df <- as.data.frame(coords_list, stringsAsFactors = FALSE)
+
+# Rename columns
+colnames(coords_df) <- c("formatted_address.north2", "formatted_address.south2", "formatted_address.east2", "formatted_address.west2")
+
+# Add the coordinates to the original data
+data <- cbind(data, coords_df)
+
+# Use the regex to replace matched coordinates with empty strings
+data$formatted_address.address <- gsub(regex, "", data$merged_column)
+
+# Trim leading and trailing whitespace
+data$formatted_address.address <- trimws(data$formatted_address.address)
+
+senate_coded_23 <- data
+
+senate_coded_23$formatted_address.north <- NULL
+senate_coded_23$formatted_address.south <- NULL
+senate_coded_23$formatted_address.east <- NULL
+senate_coded_23$formatted_address.west <- NULL
+senate_coded_23$merged_column <- NULL
+```
+
+
+Match
+
+```{r}
+#Match on 5th field "amount"
+combined_23 <- merge(senate_enacted_23, senate_coded_23, by = c("last", "st", "subcommittee", "recipient", "amount"), all.x = FALSE, all.y = FALSE)
+
+combined_23 <- combined_23 %>% distinct(id, last, .keep_all = TRUE)
+
+remain_23 <- anti_join(senate_enacted_23, combined_23, by = c("id", "last"))
+
+#Match on 5th field "location"
+combined_23_1 <- merge(remain_23, senate_coded_23, by = c("last", "st", "subcommittee", "recipient", "location"), all.x = FALSE, all.y = FALSE)
+
+combined_23_1 <- combined_23_1 %>% distinct(id, last, .keep_all = TRUE)
+
+remain_23_1 <- anti_join(remain_23, combined_23_1, by = c("id", "last"))
+
+#Match on 4 fields
+combined_23_2 <- merge(remain_23_1, senate_coded_23, by = c("last", "st", "subcommittee", "recipient"), all.x = FALSE, all.y = FALSE)
+
+combined_23_2 <- combined_23_2 %>% distinct(id, last, .keep_all = TRUE)
+
+remain_23_2 <- anti_join(remain_23_1, combined_23_2, by = c("id", "last"))
+```
+
+Combine matches and unmatched into one dataframe (senate_enacted_23_match) with ids for enacted and requests.
+
+```{r}
+unmatched <- remain_23_2
+unmatched$match <- 0
+
+library(plyr)
+matched <- rbind.fill(combined_23, combined_23_1, combined_23_2)
+matched$match <- 1
+
+senate_enacted_23_match <- rbind.fill(unmatched, matched)
+detach("package:plyr", unload = TRUE)
+
+senate_enacted_23_match$...2 <- NULL
+
+senate_enacted_23_match <- senate_enacted_23_match %>%
+  rename(id_request = ...1, id_enacted = id)
+```
+
+Count categories
+
+```{r} 
+cat_sub_count <- senate_enacted_23 %>%
+  group_by(subcommittee) %>%
+  summarize(frequency = n(), amount = sum(amount))
+
+cat_sub_count1 <- senate_enacted_23_match %>%
+  group_by(subcommittee) %>%
+  summarize(frequency = n(), amount = sum(amount))
+```

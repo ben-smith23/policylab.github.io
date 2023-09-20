@@ -1,0 +1,50 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-09-20"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+setwd("/Users/bensmith/Desktop/earmark copy RA work/remain_combined")
+data <- read_csv("senate_coded_23.csv")
+
+data$merged_column <- apply(data[, (ncol(data) - 4):ncol(data)], 1, function(row) {
+  paste(as.character(row), collapse = " ")
+})
+```
+
+```{r}
+library(stringr)
+library(tidyverse)
+
+data$merged_column <- apply(data[, (ncol(data) - 4):ncol(data)], 1, function(row) {
+  paste(as.character(row), collapse = " ")})
+
+# Regular expression to match both formats
+regex <- "(\\d+\\.\\d+),?\\s?(\\d+\\.\\d+),?\\s?(-?\\d+\\.\\d+),?\\s?(-?\\d+\\.\\d+)"
+
+# Extract coordinates
+coords_list <- str_match(data$merged_column, regex)
+
+# Remove the first column of coords_list which contains the entire matched string
+coords_list <- coords_list[, -1]
+
+# Convert to a dataframe
+coords_df <- as.data.frame(coords_list, stringsAsFactors = FALSE)
+
+# Rename columns
+colnames(coords_df) <- c("formatted_address.north", "formatted_address.south", "formatted_address.east", "formatted_address.west")
+
+# Add the coordinates to the original data
+data <- cbind(data, coords_df)
+
+# Use the regex to replace matched coordinates with empty strings
+data$non_coordinates <- gsub(regex, "", data$merged_column)
+
+# Trim leading and trailing whitespace
+data$non_coordinates <- trimws(data$non_coordinates)
+
+write.csv(data, "combined_23_fixed.csv", row.names = FALSE)
+```

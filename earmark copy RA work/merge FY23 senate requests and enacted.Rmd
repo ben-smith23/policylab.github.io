@@ -1,0 +1,209 @@
+---
+title: "Merge FY23 Senate requests and enacted earmarks"
+
+---
+
+Merge FY23 Senate enacted projects with Senate requests.
+
+```{r}
+library(plyr)
+library(dplyr)
+library(tidyverse)
+library(stringr)
+setwd("/Users/bensmith/Desktop/earmark copy RA work")
+senate_enacted_23 <- read_csv("enacted FY23 FINAL FINAL.csv")
+senate_coded_23 <- read_csv("senate coded request 22-24 addresses.csv")
+
+#Select only senator earmarks that originated in the senate "S" or in both the senate and house "B".
+senate_enacted_23 <- subset(senate_enacted_23, grepl("S", chamber) & (grepl("S", origination) | grepl("B", origination)))
+
+senate_coded_23 <- subset(senate_coded_23, grepl("FY2023", FY))
+
+senate_enacted_23 <- dplyr::rename(senate_enacted_23, amount = total, st = state)
+
+mapping_dict <- c("Agriculture, Rural Development, Food and Drug Administration, and Related Agencies" = "AG", 
+                  "Commerce, Justice, Science, and Related Agencies" = "CJS",
+                  "Energy and Water Development" = "EW",
+                  "Financial Services and General Government" = "FSGG",
+                  "Homeland Security" = "HS",
+                  "Interior, Environment, and Related Agencies" = "Interior",
+                  "Labor, Health and Human Services, Education, and Related Agencies" = "LHHS",
+                  "Military Construction, Veterans Affairs, and Related Agencies" = "MilCon VA",
+                  "Transportation, Housing and Urban Development, and Related Agencies" = "THUD")
+
+senate_coded_23 <- senate_coded_23 %>%
+  mutate(subcommittee = case_when(
+    subcommittee %in% names(mapping_dict) ~ mapping_dict[subcommittee],
+    TRUE ~ subcommittee
+  ))
+
+#Match on 5th field "amount"
+combined_23 <- merge(senate_enacted_23, senate_coded_23, by = c("last", "st", "subcommittee", "recipient", "amount"), all.x = FALSE, all.y = FALSE)
+
+combined_23 <- combined_23 %>% distinct(id, last, .keep_all = TRUE)
+
+remain_23 <- anti_join(senate_enacted_23, combined_23, by = c("id"))
+
+#Match on 5th field "location"
+combined_23_1 <- merge(remain_23, senate_coded_23, by = c("last", "st", "subcommittee", "recipient", "location"), all.x = FALSE, all.y = FALSE)
+
+combined_23_1 <- combined_23_1 %>% distinct(id, last, .keep_all = TRUE)
+
+remain_23_1 <- anti_join(remain_23, combined_23_1, by = c("id"))
+
+#Match on 4 fields
+combined_23_2 <- merge(remain_23_1, senate_coded_23, by = c("last", "st", "subcommittee", "recipient"), all.x = FALSE, all.y = FALSE)
+
+combined_23_2 <- combined_23_2 %>% distinct(id, last, .keep_all = TRUE)
+
+remain_23_2 <- anti_join(remain_23_1, combined_23_2, by = c("id"))
+
+#write.csv(remain_23_2, "remain_23_2.csv", row.names = FALSE)
+#write.csv(senate_coded_23, "senate_coded_23.csv", row.names = FALSE)
+```
+
+```{r}
+# Merge based on the four fields + shared recepient word
+combined_23_3 <- merge(remain_23_2, senate_coded_23, by = c("last", "st", "subcommittee", "location"), all.x = FALSE, all.y = FALSE)
+
+# Filter based on word matching between the two recipient columns
+has_common_word <- function(recipient1, recipient2) {
+  word_list_1 <- strsplit(tolower(recipient1), " ")[[1]]
+  word_list_2 <- strsplit(tolower(recipient2), " ")[[1]]
+  any(word_list_1 %in% word_list_2)
+}
+
+# Apply the function to filter rows
+combined_23_3 <- combined_23_3 %>% 
+  rowwise() %>% 
+  filter(has_common_word(recipient.x, recipient.y)) %>%
+  ungroup()
+
+combined_23_3 <- combined_23_3 %>% distinct(id, last, .keep_all = TRUE)
+
+remain_23_3 <- anti_join(remain_23_2, combined_23_3, by = c("id"))
+
+# Add an empty 'manual_check' column for manual entry
+combined_23_3$manual_check <- 0
+
+# Reorder columns for manual checking
+cols_for_manual <- c("manual_check", "recipient.x", "recipient.y", "project.x", "project.y")
+other_cols <- setdiff(names(combined_23_3), cols_for_manual)
+combined_23_3 <- combined_23_3 %>% select(all_of(c(cols_for_manual, other_cols)))
+
+# Export to CSV for manual check
+#write.csv(combined_23_3, "combined_23_3_for_manual_check.csv", row.names = FALSE)
+
+# Read manually checked data
+checked_data <- read_csv("combined_23_3_for_manual_check2.csv")
+
+# Restore original column order
+#original_order <- c(other_cols, cols_for_manual)
+#checked_data <- checked_data %>% select(all_of(original_order))
+
+# Split data based on manual_check column
+correct_matches <- filter(checked_data, manual_check == 0)
+incorrect_matches <- filter(checked_data, manual_check == 1)
+
+# Append the incorrect matches back to remain_23_3 and remove 'manual_check' column
+remain_23_3 <- bind_rows(remain_23_3, select(incorrect_matches, -manual_check))
+
+# Set combined_23_3 to the correct matches and remove 'manual_check' column
+combined_23_3 <- select(correct_matches, -manual_check)
+```
+
+```{r}
+setwd("/Users/bensmith/Desktop/earmark copy RA work/remain_combined")
+write.csv(senate_coded_23, "senate_coded_23", row.names = FALSE)
+
+write.csv(combined_23, "combined_23", row.names = FALSE)
+write.csv(combined_23_3, "combined_23_1", row.names = FALSE)
+write.csv(combined_23_3, "combined_23_2", row.names = FALSE)
+write.csv(combined_23_3, "combined_23_3", row.names = FALSE)
+
+write.csv(remain_23, "remain_23", row.names = FALSE)
+write.csv(remain_23_3, "remain_23_1", row.names = FALSE)
+write.csv(remain_23_3, "remain_23_2", row.names = FALSE)
+write.csv(remain_23_3, "remain_23_3", row.names = FALSE)
+```
+
+
+```{r}
+# Define a vector of connector words to exclude
+connector_words <- c("a", "about", "above", "after", "again", "against", "all", "am", "an", "and", 
+                     "any", "are", "aren't", "as", "at", "be", "because", "been", "before", "being", 
+                     "below", "between", "both", "but", "by", "can't", "cannot", "could", "couldn't", 
+                     "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down", "during", 
+                     "each", "few", "for", "from", "further", "had", "hadn't", "has", "hasn't", "have", 
+                     "haven't", "having", "he", "he'd", "he'll", "he's", "her", "here", "here's", "hers", 
+                     "herself", "him", "himself", "his", "how", "how's", "i", "i'd", "i'll", "i'm", "i've", 
+                     "if", "in", "into", "is", "isn't", "it", "it's", "its", "itself", "let's", "me", "more", 
+                     "most", "mustn't", "my", "myself", "no", "nor", "not", "of", "off", "on", "once", "only", 
+                     "or", "other", "ought", "our", "ours", "ourselves", "out", "over", "own", "same", "shan't", 
+                     "she", "she'd", "she'll", "she's", "should", "shouldn't", "so", "some", "such", "than", "that", 
+                     "that's", "the", "their", "theirs", "them", "themselves", "then", "there", "there's", "these", 
+                     "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "to", "too", "under", 
+                     "until", "up", "very", "was", "wasn't", "we", "we'd", "we'll", "we're", "we've", "were", "weren't", 
+                     "what", "what's", "when", "when's", "where", "where's", "which", "while", "who", "who's", "whom", 
+                     "why", "why's", "with", "won't", "would", "wouldn't", "you", "you'd", "you'll", "you're", "you've", 
+                     "your", "yours", "yourself", "yourselves")
+
+# Merge the datasets based on the specified columns
+combined_23_4 <- merge(remain_23_3, senate_coded_23, by = c("last", "st", "subcommittee"), all.x = FALSE, all.y = FALSE)
+
+# Define a function that counts the number of common words (excluding connector words)
+count_common_words <- function(text1, text2) {
+  if (is.na(text1) || is.na(text2) || text1 == "" || text2 == "") {
+    return(0)
+  }
+  
+  word_list_1 <- setdiff(strsplit(tolower(text1), " ")[[1]], connector_words)
+  word_list_2 <- setdiff(strsplit(tolower(text2), " ")[[1]], connector_words)
+  
+  return(sum(word_list_1 %in% word_list_2))
+}
+
+# Apply the function to compute the number of common words
+combined_23_4 <- combined_23_4 %>%
+  rowwise() %>%
+  mutate(common_word_count = count_common_words(project.x, project.y)) %>%
+  filter(common_word_count >= 3) %>%
+  select(-common_word_count) %>%
+  ungroup()
+
+# Retain only distinct rows based on id and last
+combined_23_4 <- combined_23_4 %>% distinct(id, last, .keep_all = TRUE)
+
+# Compute the remaining unmatched rows
+remain_23_4 <- anti_join(remain_23_3, combined_23_4, by = c("id"))
+```
+
+```{r}
+#Match on 3 fields (doesn't work)
+combined_23_5 <- merge(remain_23_4, senate_coded_23, by = c("last", "st", "subcommittee"), all.x = FALSE, all.y = FALSE)
+
+combined_23_5 <- combined_23_5 %>% distinct(id, last, .keep_all = TRUE)
+
+remain_23_5 <- anti_join(remain_23_4, combined_23_5, by = c("id"))
+
+#write.csv(combined_23_3, "combined_23_4.csv", row.names = FALSE)
+```
+
+Combine matches and unmatched into one dataframe (senate_enacted_23_match) with ids for enacted and requests.
+
+```{r}
+unmatched <- remain_23_2
+unmatched$match <- 0
+
+matched <- rbind.fill(combined_23, combined_23_1, combined_23_2)
+matched$match <- 1
+
+senate_enacted_23_match <- rbind.fill(unmatched, matched)
+detach("package:plyr", unload = TRUE)
+
+senate_enacted_23_match$...2 <- NULL
+
+senate_enacted_23_match <- senate_enacted_23_match %>%
+  rename(id_request = ...1, id_enacted = id)
+```
+
